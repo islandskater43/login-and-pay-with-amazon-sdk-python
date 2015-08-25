@@ -2,11 +2,11 @@ import re
 import os
 import sys
 import pay_with_amazon.pwa_region as pwa_region
-import pay_with_amazon.version as pwa_version
+import pay_with_amazon.reports_version as reports_version
 from pay_with_amazon.payment_request import PaymentRequest
 
 
-class PayWithAmazonClient:
+class PayWithAmazonReportsClient:
 
     """This client allows you to make all the necessary API calls to
         integrate with Login and Pay with Amazon.
@@ -95,8 +95,8 @@ class PayWithAmazonClient:
         self.application_version = application_version
 
         self._sandbox = sandbox
-        self._api_version = pwa_version.versions['api_version']
-        self._application_library_version = pwa_version.versions[
+        self._api_version = reports_version.versions['api_version']
+        self._application_library_version = reports_version.versions[
             'application_version']
         self._mws_endpoint = None
         self._set_endpoint()
@@ -134,14 +134,14 @@ class PayWithAmazonClient:
 
     def _set_endpoint(self):
         """Set endpoint for API calls"""
-        if self._sandbox:
-            self._mws_endpoint = \
-                'https://{}/OffAmazonPayments_Sandbox/{}'.format(
-                    self._region, self._api_version)
-        else:
-            self._mws_endpoint = \
-                'https://{}/OffAmazonPayments/{}'.format(
-                    self._region, self._api_version)
+        """if self._sandbox:
+        self._mws_endpoint = \
+            'https://{}/Reports/{}'.format(
+                self._region, self._api_version)
+        else:"""
+        self._mws_endpoint = \
+            'https://{}/Reports/{}'.format(
+                self._region, '2009-01-01')
 
     def get_login_profile(self, access_token, client_id):
         """Get profile associated with LWA user. This is a helper method for
@@ -214,6 +214,37 @@ class PayWithAmazonClient:
             'SellerOrderId': seller_order_id,
             'StoreName': store_name,
             'CustomInformation': custom_information,
+            'SellerId': merchant_id,
+            'MWSAuthToken': mws_auth_token}
+        return self._operation(params=parameters, options=optionals)
+
+    def get_report_list(
+            self,
+            available_from=None,
+            available_to=None,
+            report_type_list=None,
+            merchant_id=None,
+            mws_auth_token=None):
+
+        parameters = {
+            'Action': 'GetReportList'}
+        optionals = {
+            'AvailableFromDate': available_from,
+            'AvailableToDate': available_to,
+            'ReportTypeList.Type.1': report_type_list,
+            'SellerId': merchant_id,
+            'MWSAuthToken': mws_auth_token}
+        return self._operation(params=parameters, options=optionals)
+
+    def get_report(
+            self,
+            report_id,
+            merchant_id=None,
+            mws_auth_token=None):
+        parameters = {
+            'Action': 'GetReport',
+            'ReportId': report_id}
+        optionals = {
             'SellerId': merchant_id,
             'MWSAuthToken': mws_auth_token}
         return self._operation(params=parameters, options=optionals)
@@ -1229,7 +1260,7 @@ class PayWithAmazonClient:
             params=params,
             config={'mws_access_key': self.mws_access_key,
                     'mws_secret_key': self.mws_secret_key,
-                    'api_version': self._api_version,
+                    'api_version': '2009-01-01', #self._api_version,
                     'merchant_id': self.merchant_id,
                     'mws_endpoint': self._mws_endpoint,
                     'headers': self._headers,

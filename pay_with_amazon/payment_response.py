@@ -36,12 +36,16 @@ class PaymentResponse:
         """Initialize response"""
         self.success = True
         self._xml = xml
+        #print(xml)
         try:
             self._root = et.fromstring(xml)
             self._ns = self._namespace(self._root)
             self._response_type = self._root.tag.replace(self._ns, '')
+            self._valid_xml = True
         except:
-            raise ValueError('Invalid XML.')
+            print('XML failed to parse')
+            self._valid_xml = False
+            #raise ValueError('Invalid XML.')
 
         """There is a bug where 'eu' endpoint returns ErrorResponse XML node
         'RequestID' with capital 'ID'. 'na' endpoint returns 'RequestId'
@@ -61,8 +65,17 @@ class PaymentResponse:
         ns = re.match('\{.*\}', element.tag)
         return ns.group(0) if ns else ''
 
+    def raw_data(self):
+        """Return raw data"""
+        return self._xml
+
+    #def valid_response(self):
+
+
     def to_xml(self):
         """Return XML"""
+        if self._valid_xml == False:
+            raise ValueError('Invalid XML.')
         return self._xml
 
     def to_json(self):
