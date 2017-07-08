@@ -1,5 +1,5 @@
 import requests
-import pay_with_amazon.lwa_region as lwa_region
+import amazon_pay.lwa_region as lwa_region
 
 
 class LoginWithAmazon:

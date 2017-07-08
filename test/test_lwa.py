@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import Mock, patch
-from pay_with_amazon.login_with_amazon import LoginWithAmazon
+from amazon_pay.login_with_amazon import LoginWithAmazon
 
 
 class LoginWithAmazonClientTest(unittest.TestCase):

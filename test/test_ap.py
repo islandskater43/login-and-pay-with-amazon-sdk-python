@@ -1,15 +1,18 @@
 import os
 import sys
 import json
+import platform
 import unittest
 import xml.etree.ElementTree as et
+import amazon_pay.ap_region as ap_region
+import amazon_pay.version as ap_version
 from unittest.mock import Mock, patch
-from pay_with_amazon.client import PayWithAmazonClient
-from pay_with_amazon.payment_request import PaymentRequest
-from pay_with_amazon.payment_response import PaymentResponse, PaymentErrorResponse
+from amazon_pay.client import AmazonPayClient
+from amazon_pay.payment_request import PaymentRequest
+from amazon_pay.payment_response import PaymentResponse, PaymentErrorResponse
 
 
-class PayWithAmazonClientTest(unittest.TestCase):
+class AmazonPayClientTest(unittest.TestCase):
 
     def setUp(self):
         self.maxDiff = None
@@ -21,7 +24,7 @@ class PayWithAmazonClientTest(unittest.TestCase):
             'https://mws.amazonservices.com/OffAmazonPayments_Sandbox/{}'.format(
                 self.service_version)
 
-        self.client = PayWithAmazonClient(
+        self.client = AmazonPayClient(
             mws_access_key=self.mws_access_key,
             mws_secret_key=self.mws_secret_key,
             merchant_id=self.merchant_id,
@@ -89,10 +92,23 @@ class PayWithAmazonClientTest(unittest.TestCase):
         self.assertEqual(
             self.client._mws_endpoint,
             'https://mws.amazonservices.com/OffAmazonPayments_Sandbox/2013-01-01')
+        
+    def test_sanitize_response_data(self):
+        current_file_dir = os.path.dirname(__file__)
+        test_file_path = os.path.join(current_file_dir, "log.txt")
+        f = open(test_file_path, "r")
+        source_text = f.read()
+        f.close()
+        text = self.request._sanitize_response_data(source_text)
+        test_file_path = os.path.join(current_file_dir, "sanlog.txt")
+        f = open(test_file_path, "r")
+        san_text = f.read()
+        f.close
+        self.assertEqual(text, san_text)
 
     def test_region_exception(self):
         with self.assertRaises(KeyError):
-            PayWithAmazonClient(
+            AmazonPayClient(
                 mws_access_key=self.mws_access_key,
                 mws_secret_key=self.mws_secret_key,
                 merchant_id=self.merchant_id,
@@ -114,7 +130,7 @@ class PayWithAmazonClientTest(unittest.TestCase):
             'JQZYxe8EFlLE3XCAWotsn329rpZF7OFYhA8oo7rUV2E=')
 
     def test_application_settings(self):
-        client = PayWithAmazonClient(
+        client = AmazonPayClient(
             mws_access_key=self.mws_access_key,
             mws_secret_key=self.mws_secret_key,
             merchant_id=self.merchant_id,
@@ -161,12 +177,24 @@ class PayWithAmazonClientTest(unittest.TestCase):
 
     @patch('requests.post')
     def test_headers(self, mock_urlopen):
+        py_version = ".".join(map(str, sys.version_info[:3]))
         mock_urlopen.side_effect = self.mock_requests_post
         self.client.get_service_status()
+        if sys.version_info[0] == 3 and sys.version_info[1] >= 2:
+            py_valid = True
+        
         header_expected = {
-            'User-Agent': 'Language=Python; MWSClientVersion=2013-01-01; Platform={}'.format(sys.platform),
-            'Content-Type': 'application/x-www-form-urlencoded'}
+            'Content-Type': 'application/x-www-form-urlencoded',
+            "User-Agent":'amazon-pay-sdk-python/{0} ({1}Python/{2}; {3}/{4})'.format(
+            str(ap_version.versions['application_version']),
+            (''),
+            py_version,
+            str(platform.system()),
+            str(platform.release())
+            )
+        }
         self.assertEqual(mock_urlopen.call_args[1]['headers'], header_expected)
+        self.assertTrue(py_valid, True)
 
     @patch('requests.post')
     def test_create_order_reference_for_id(self, mock_urlopen):
@@ -365,12 +393,14 @@ class PayWithAmazonClientTest(unittest.TestCase):
         self.client.get_order_reference_details(
             amazon_order_reference_id='test',
             address_consent_token='test',
+            access_token='test',
             merchant_id='test',
             mws_auth_token='test')
         parameters = {
             'Action': 'GetOrderReferenceDetails',
             'AmazonOrderReferenceId': 'test',
             'AddressConsentToken': 'test',
+            'AccessToken': 'test',
             'SellerId': 'test',
             'MWSAuthToken': 'test'}
         data_expected = self.request._querystring(parameters)
@@ -611,22 +641,22 @@ class PayWithAmazonClientTest(unittest.TestCase):
         response = self.client.get_login_profile('access_token', 'client_id')
 
     def test_environment_variables(self):
-        os.environ['PWA_REGION'] = 'na'
-        os.environ['PWA_MWS_ACCESS_KEY'] = 'PWA_MWS_ACCESS_KEY'
-        os.environ['PWA_MERCHANT_ID'] = 'PWA_MERCHANT_ID'
-        os.environ['PWA_CURRENCY_CODE'] = 'PWA_CURRENCY_CODE'
-        os.environ['PWA_MWS_SECRET_KEY'] = 'PWA_MWS_SECRET_KEY'
+        os.environ['AP_REGION'] = 'na'
+        os.environ['AP_MWS_ACCESS_KEY'] = 'AP_MWS_ACCESS_KEY'
+        os.environ['AP_MERCHANT_ID'] = 'AP_MERCHANT_ID'
+        os.environ['AP_CURRENCY_CODE'] = 'AP_CURRENCY_CODE'
+        os.environ['AP_MWS_SECRET_KEY'] = 'AP_MWS_SECRET_KEY'
 
-        client = PayWithAmazonClient(sandbox=True)
+        client = AmazonPayClient(sandbox=True)
         self.assertEqual(client.region, 'na')
-        self.assertEqual(client.mws_access_key, 'PWA_MWS_ACCESS_KEY')
-        self.assertEqual(client.mws_secret_key, 'PWA_MWS_SECRET_KEY')
-        self.assertEqual(client.merchant_id, 'PWA_MERCHANT_ID')
-        self.assertEqual(client.currency_code, 'PWA_CURRENCY_CODE')
+        self.assertEqual(client.mws_access_key, 'AP_MWS_ACCESS_KEY')
+        self.assertEqual(client.mws_secret_key, 'AP_MWS_SECRET_KEY')
+        self.assertEqual(client.merchant_id, 'AP_MERCHANT_ID')
+        self.assertEqual(client.currency_code, 'AP_CURRENCY_CODE')
 
-        os.environ['PWA_REGION'] = 'PWA_REGION'
+        os.environ['AP_REGION'] = 'AP_REGION'
         with self.assertRaises(KeyError):
-            client = PayWithAmazonClient()
+            client = AmazonPayClient()
 
 
 if __name__ == "__main__":

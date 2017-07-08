@@ -1,15 +1,21 @@
 import re
 import os
 import sys
-import pay_with_amazon.pwa_region as pwa_region
-import pay_with_amazon.version as pwa_version
-from pay_with_amazon.payment_request import PaymentRequest
+import logging
+import platform
+import amazon_pay.ap_region as ap_region
+import amazon_pay.version as ap_version
+from amazon_pay.payment_request import PaymentRequest
+from fileinput import filename
 
 
-class PayWithAmazonClient:
+class AmazonPayClient:
+
+    logger = logging.getLogger('__amazon_pay_sdk__')
+    logger.addHandler(logging.NullHandler())
 
     """This client allows you to make all the necessary API calls to
-        integrate with Login and Pay with Amazon.
+        integrate with Amazon Pay.
     """
     # pylint: disable=too-many-instance-attributes, too-many-public-methods
     # pylint: disable=too-many-arguments, too-many-lines
@@ -24,34 +30,47 @@ class PayWithAmazonClient:
             sandbox=False,
             handle_throttle=True,
             application_name=None,
-            application_version=None):
+            application_version=None,
+            log_enabled=False,
+            log_file_name=None,
+            log_level=None):
+    
+    
         """
         Parameters
         ----------
         mws_access_key : string, optional
             Your MWS access key. If no value is passed, check environment.
-            Environment variable: PWA_MWS_ACCESS_KEY
+            Environment variable: AP_MWS_ACCESS_KEY
+            (mws_access_key must be passed or specified in environment or this
+             will result in an error)
 
         mws_secret_key : string, optional
             Your MWS secret key. If no value is passed, check environment.
-            Environment variable: PWA_MWS_SECRET_KEY
+            Environment variable: AP_MWS_SECRET_KEY
+            (mws_secret_key must be passed or specified in environment or this
+             will result in an error)
 
         merchant_id : string, optional
             Your merchant ID. If you are a marketplace enter the seller's merchant
             ID. If no value is passed, check environment.
-            Environment variable: PWA_MERCHANT_ID
+            Environment variable: AP_MERCHANT_ID
+            (merchant_id must be passed or specified in environment or this
+             will result in an error)
 
         region : string, optional
             The region in which you are conducting business. If no value is
             passed, check environment.
-            Environment variable: PWA_REGION
+            Environment variable: AP_REGION
+            (region must be passed or specified in environment or this
+             will result in an error)
 
         sandbox : string, optional
             Toggle sandbox mode. Default: False.
 
-        currency_code: string, optional
+        currency_code: string, required
             Currency code for your region.
-            Environment variable: PWA_CURRENCY_CODE
+            Environment variable: AP_CURRENCY_CODE
 
         handle_throttle: boolean, optional
             If requests are throttled, do you want this client to pause and
@@ -64,12 +83,21 @@ class PayWithAmazonClient:
         application_version: string, optional
             Your application version. This will get set in the UserAgent.
             Default: None
+
+        log_file_name: string, optional
+            The name of the file for logging
+            Default: None
+
+        log_level: integer, optional
+            The level of logging recorded
+            Default: "None"
+            Levels: "CRITICAL"; "ERROR"; "WARNING"; "INFO"; "DEBUG"; "NOTSET"
         """
-        env_param_map = {'mws_access_key': 'PWA_MWS_ACCESS_KEY',
-                         'mws_secret_key': 'PWA_MWS_SECRET_KEY',
-                         'merchant_id': 'PWA_MERCHANT_ID',
-                         'region': 'PWA_REGION',
-                         'currency_code': 'PWA_CURRENCY_CODE'}
+        env_param_map = {'mws_access_key': 'AP_MWS_ACCESS_KEY',
+                         'mws_secret_key': 'AP_MWS_SECRET_KEY',
+                         'merchant_id': 'AP_MERCHANT_ID',
+                         'region': 'AP_REGION',
+                         'currency_code': 'AP_CURRENCY_CODE'}
         for param in env_param_map:
             if eval(param) is None:
                 try:
@@ -80,7 +108,7 @@ class PayWithAmazonClient:
                 setattr(self, param, eval(param))
 
         try:
-            self._region = pwa_region.regions[self.region]
+            self._region = ap_region.regions[self.region]
             # used for Login with Amazon helper
             self._region_code = self.region
         except KeyError:
@@ -95,28 +123,50 @@ class PayWithAmazonClient:
         self.application_version = application_version
 
         self._sandbox = sandbox
-        self._api_version = pwa_version.versions['api_version']
-        self._application_library_version = pwa_version.versions[
+        self._api_version = ap_version.versions['api_version']
+        self._application_library_version = ap_version.versions[
             'application_version']
         self._mws_endpoint = None
         self._set_endpoint()
 
-        application = {'Language': 'Python',
-                       'Platform': sys.platform,
-                       'MWSClientVersion': self._api_version}
-        if application_name is not None:
-            application['ApplicationName'] = application_name
+        if log_enabled is not False:
+            numeric_level = getattr(logging, log_level.upper(), None)
+            if numeric_level is not None:
+                if log_file_name is not None:
+                    self.logger.setLevel(numeric_level)
+                    fh = logging.FileHandler(log_file_name)
+                    self.logger.addHandler(fh)
+                    fh.setLevel(numeric_level)
+                else:
+                    self.logger.setLevel(numeric_level)
+                    ch = logging.StreamHandler(sys.stdout)
+                    self.logger.addHandler(ch)
+                    ch.setLevel(numeric_level)
+        
+        app_name_and_ver = ''
+        
+        if application_name not in ['', None]:
+            app_name_and_ver = app_name_and_ver + str(application_name)
+            if application_version not in ['', None]:
+                app_name_and_ver = app_name_and_ver + '/' + str(application_version)
 
-        if application_version is not None:
-            application['ApplicationVersion'] = application_version
+        elif application_version not in ['', None]:
+            app_name_and_ver = app_name_and_ver + str(application_version)
+        
+        if ((application_name not in ['', None]) | (application_version not in ['', None])):
+            app_name_and_ver = app_name_and_ver + '; '
 
-        self._user_agent = '; '.join(
-            '{}={}'.format(
-                k,
-                v) for (
-                k,
-                v) in sorted(
-                application.items()))
+        current_py_ver = ".".join(map(str, sys.version_info[:3]))
+        
+        self._user_agent = 'amazon-pay-sdk-python/{0} ({1}Python/{2}; {3}/{4})'.format(
+            str(self._application_library_version),
+            str(app_name_and_ver),
+            str(current_py_ver),
+            str(platform.system()),
+            str(platform.release())
+        )
+        
+        self.logger.debug('user agent: %s', self._user_agent)
 
         self._headers = {
             'Content-Type': 'application/x-www-form-urlencoded',
@@ -147,7 +197,7 @@ class PayWithAmazonClient:
         """Get profile associated with LWA user. This is a helper method for
         Login with Amazon (separate service). Added here for convenience.
         """
-        from pay_with_amazon.login_with_amazon import LoginWithAmazon
+        from amazon_pay.login_with_amazon import LoginWithAmazon
         lwa_client = LoginWithAmazon(
             client_id=client_id,
             region=self._region_code,
@@ -292,7 +342,7 @@ class PayWithAmazonClient:
             overrides the default value in Seller Central under Settings >
             Account Settings. It is displayed to the buyer in the email they
             receive from Amazon and also in their transaction history on the
-            Amazon Payments website.
+            Amazon Pay website.
 
         custom_information : string, optional
             Any additional information you wish to include with this billing
@@ -437,14 +487,14 @@ class PayWithAmazonClient:
         seller_order_id : string, optional
             The seller-specified identifier of this order. This is displayed to
             the buyer in the email they receive from Amazon and transaction
-            history on the Amazon Payments website. Default: None
+            history on the Amazon Pay website. Default: None
 
         store_name : string, optional
             The identifier of the store from which the order was placed. This
             overrides the default value in Seller Central under Settings >
             Account Settings. It is displayed to the buyer in the email they
             receive from Amazon and also in their transaction history on the
-            Amazon Payments website. Default: None
+            Amazon Pay website. Default: None
 
         custom_information : string, optional
             Any additional information you wish to include with this order
@@ -535,7 +585,7 @@ class PayWithAmazonClient:
         Parameters
         ----------
         amazon_order_reference_id : string, required
-            The order reference identifier retrieved from the Amazon Button
+            The order reference identifier retrieved from the amazon pay Button
             widget.
 
         order_total : string, required
@@ -555,14 +605,14 @@ class PayWithAmazonClient:
         seller_order_id : string, optional
             The seller-specified identifier of this order. This is displayed to
             the buyer in the email they receive from Amazon and also in their
-            transaction history on the Amazon Payments website. Default: None
+            transaction history on the Amazon Pay website. Default: None
 
         store_name : string, optional
             The identifier of the store from which the order was placed. This
             overrides the default value in Seller Central under Settings >
             Account Settings. It is displayed to the buyer in the email they
             receive from Amazon and also in their transaction history on the
-            Amazon Payments website. Default: None
+            Amazon Pay website. Default: None
 
         custom_information : string, optional
             Any additional information you wish to include with this order
@@ -593,6 +643,7 @@ class PayWithAmazonClient:
     def get_order_reference_details(
             self,
             amazon_order_reference_id,
+            access_token=None,
             address_consent_token=None,
             merchant_id=None,
             mws_auth_token=None):
@@ -603,12 +654,19 @@ class PayWithAmazonClient:
         ----------
         amazon_order_reference_id : string, optional
             The order reference identifier. This value is retrieved from the
-            Amazon Button widget after the buyer has successfully authenticated
+            amazon pay Button widget after the buyer has successfully authenticated
             with Amazon.
+                
+        access_token : string, optional
+            The access token. This value is retrieved from the
+            amazon pay Button widget after the buyer has successfully authenticated
+            with Amazon. (Note: When using this value, you cannot use the
+            address_consent_token at the same time, or this will cause an error.
+            The same note applies when using just the address_consent_token)
 
         address_consent_token : string, optional
             The buyer address consent token. This value is retrieved from the
-            Amazon Button widget after the buyer has successfully authenticated
+            amazon pay Button widget after the buyer has successfully authenticated
             with Amazon.
 
         merchant_id : string, required
@@ -624,6 +682,7 @@ class PayWithAmazonClient:
         }
         optionals = {
             'AddressConsentToken': address_consent_token,
+            'AccessToken': access_token,
             'SellerId': merchant_id,
             'MWSAuthToken': mws_auth_token}
         return self._operation(params=parameters, options=optionals)
@@ -765,8 +824,8 @@ class PayWithAmazonClient:
             it is processed by Amazon. The processing time varies and can be a
             minute or more. After processing is complete, Amazon will notify
             you of the final processing status. For more information, see
-            Synchronizing your systems with Amazon Payments in the Login and
-            Pay with Amazon Integration Guide. Default: 1440
+            Synchronizing your systems with Amazon Pay in the Amazon Pay 
+            Integration Guide. Default: 1440
 
         capture_now : boolean, optional
             Indicates whether to directly capture a specified amount against an
@@ -774,7 +833,7 @@ class PayWithAmazonClient:
             until the order ships). The captured amount is disbursed to your
             account in the next disbursement cycle.
 
-            Note: The Amazon Payments policy states that you charge your buyer
+            Note: The Amazon Pay policy states that you charge your buyer
             when you fulfill the items in the order. You should not collect
             funds prior to fulfilling the order. Default: False
 
@@ -1080,14 +1139,14 @@ class PayWithAmazonClient:
         charge_order_id : string, optional
             The seller-specified identifier of this order. This is displayed to
             the buyer in the emails they receive from Amazon and also in their
-            transaction history on the Amazon Payments website.
+            transaction history on the Amazon Pay website.
 
         store_name : string, optional
             The identifier of the store from which the order was placed. This
             overrides the default value in Seller Central under Settings >
             Account Settings. It is displayed to the buyer in the email they
             receive from Amazon and also in their transaction history on the
-            Amazon Payments website.
+            Amazon Pay website.
 
         custom_information : string, optional
             Any additional information you wish to include with this billing

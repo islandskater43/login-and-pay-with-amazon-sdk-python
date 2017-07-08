@@ -1,16 +1,16 @@
 from setuptools import setup
-import pay_with_amazon.version as pwa_version
+import amazon_pay.version as pwa_version
 
 setup(
-    name='pay_with_amazon',
-    packages=['pay_with_amazon'],
+    name='amazon_pay',
+    packages=['amazon_pay'],
     version=pwa_version.versions['application_version'],
-    description='Login and Pay with Amazon Python SDK',
-    url='https://github.com/amzn/login-and-pay-with-amazon-sdk-python',
-    download_url='https://github.com/amzn/login-and-pay-with-amazon-sdk-python/tarball/{}'.format(
+    description='Amazon Pay Python SDK',
+    url='https://github.com/amzn/amazon-pay-sdk-python',
+    download_url='https://github.com/amzn/amazon-pay-sdk-python/tarball/{}'.format(
         pwa_version.versions['application_version']),
     author='EPS-DSE',
-    author_email='pay-with-amazon-sdk@amazon.com',
+    author_email='amazon-pay-sdk@amazon.com',
     license='Apache License version 2.0, January 2004',
     install_requires=['pyOpenSSL >= 0.11',
                       'requests >= 2.6.0'],
