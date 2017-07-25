@@ -4,9 +4,9 @@ import xml.etree.ElementTree as et
 from collections import defaultdict
 
 
-class PaymentResponse:
+class ReportResponse:
 
-    """Base class for all OffAmazonPayments responses
+    """Base class for all Report responses
 
     Parameters
     ----------
@@ -40,8 +40,9 @@ class PaymentResponse:
             self._root = et.fromstring(xml)
             self._ns = self._namespace(self._root)
             self._response_type = self._root.tag.replace(self._ns, '')
+            self._valid_xml = True
         except:
-            raise ValueError('Invalid XML.')
+            self._valid_xml = False
 
         """There is a bug where 'eu' endpoint returns ErrorResponse XML node
         'RequestID' with capital 'ID'. 'na' endpoint returns 'RequestId'
@@ -61,8 +62,14 @@ class PaymentResponse:
         ns = re.match('\{.*\}', element.tag)
         return ns.group(0) if ns else ''
 
+    def raw_data(self):
+        """Return raw data"""
+        return self._xml
+
     def to_xml(self):
         """Return XML"""
+        if self._valid_xml == False:
+            raise ValueError('Invalid XML.')
         return self._xml
 
     def to_json(self):
@@ -99,11 +106,11 @@ class PaymentResponse:
         return d
 
 
-class PaymentErrorResponse(PaymentResponse):
+class ReportErrorResponse(ReportResponse):
 
     """Error response subclass"""
 
     def __init__(self, xml):
 
-        super(PaymentErrorResponse, self).__init__(xml)
+        super(ReportErrorResponse, self).__init__(xml)
         self.success = False
